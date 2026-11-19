@@ -87,7 +87,7 @@ fun ReciteScreen(vm: ReciteViewModel, onExit: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 LiveHeard(ui)
                 Spacer(Modifier.height(10.dp))
-                StatusArea(ui, onTryAgain = vm::retry, onHear = vm::hearWord)
+                StatusArea(ui, onTryAgain = vm::retry, onHear = vm::hearWord, onAccept = vm::acceptWord)
             }
 
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
@@ -146,7 +146,7 @@ private fun AyahWords(ui: ReciteUi, modifier: Modifier) {
 }
 
 @Composable
-private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit) {
+private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit, onAccept: () -> Unit) {
     when (ui.phase) {
         Phase.Idle -> Hint(ui.message ?: "Tap the mic and recite. I'll follow you word by word.")
         Phase.Listening -> Hint("Listening… recite from where the gold highlight is.")
@@ -161,6 +161,7 @@ private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit)
                         if (m.type == MistakeType.SKIPPED_WORD) "You skipped a word" else "That word didn't sound right",
                         fontWeight = FontWeight.Bold, color = ErrorRed, fontSize = 17.sp,
                     )
+                    Text("Expected: ${m.expected}", fontSize = 16.sp)
                     if (m.heard.isNotEmpty()) Text("I heard: ${m.heard}", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .7f))
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -175,6 +176,7 @@ private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit)
                         Button(onClick = onTryAgain) { Text("Try again") }
                         OutlinedButton(onClick = onHear) { Text("Hear word") }
                     }
+                    TextButton(onClick = onAccept) { Text("I said it right ✓") }
                 }
             }
         }

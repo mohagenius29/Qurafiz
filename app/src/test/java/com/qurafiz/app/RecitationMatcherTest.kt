@@ -48,4 +48,15 @@ class RecitationMatcherTest {
         val r = run("رب العالمين", start = 2) as Result.Progress
         assertTrue(r.completed)
     }
+
+    @Test fun spellingVariantsAreAccepted() {
+        assertTrue(run("الهمد لله رب العلمين") is Result.Progress)
+        assertTrue((run("الحمدلله رب العالمين") as Result.Progress).completed)
+    }
+
+    @Test fun droppedTinyWordIsTolerated() {
+        val a = ArabicNormalizer.words("ٱلَّذِي يُوَسۡوِسُ فِي صُدُورِ ٱلنَّاسِ")
+        val r = RecitationMatcher.evaluate(a, ArabicNormalizer.words("الذي يوسوس صدور الناس"), 0, true, false) as Result.Progress
+        assertTrue(r.completed)
+    }
 }

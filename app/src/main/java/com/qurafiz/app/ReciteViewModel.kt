@@ -45,6 +45,7 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
     private var base = 0                       // first expected word for the current utterance
     private var ayahMistakes = 0
     private val attempts = HashMap<Int, Int>() // word index -> tries in this ayah
+    private val lastWrong = HashMap<Int, String>() // word index -> what the recognizer heard last time
     private var prevHeard: List<String> = emptyList()
     private var resumeAfterAudio = false
     private var advanceJob: Job? = null
@@ -85,7 +86,7 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
         engine.stop(); player.stop()
         val (s, a) = queue[i]
         val ayah = Quran.ayah(s, a)
-        base = 0; ayahMistakes = 0; attempts.clear(); prevHeard = emptyList(); resumeAfterAudio = false
+        base = 0; ayahMistakes = 0; attempts.clear(); lastWrong.clear(); prevHeard = emptyList(); resumeAfterAudio = false
         engine.biasWords = ayah.words.map { it.norm }
         ui = ui.copy(
             surah = s, surahName = Quran.surahs[s - 1].name, ayahNumber = a,
@@ -140,6 +141,16 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** "I said it right": count the current word as correct and carry on. */
+    fun acceptWord() {
+        if (ui.phase != Phase.Mistake && ui.phase != Phase.PlayingAudio) return
+        player.stop()
+        resumeAfterAudio = false
+        val next = ui.confirmed + 1
+        ui = ui.copy(confirmed = next, mistake = null)
+        if (next >= ui.words.size) ayahCompleted() else startListening()
+    }
+
     fun skipAyah() { if (ui.position + 1 < queue.size) loadAyah(ui.position + 1) else finish() }
 
     fun toggleHide() { ui = ui.copy(hideMode = !ui.hideMode) }
@@ -176,6 +187,15 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
                     return
                 }
                 engine.stop()
+                // Same "wrong" word heard again after a retry: the phone's recognizer simply hears
+                // this word that way, so give the benefit of the doubt and move on.
+                val before = lastWrong[r.at]
+                if (before != null && Phonetic.key(before, true) == Phonetic.key(r.heard, true)) {
+                    ui = ui.copy(confirmed = r.at + 1)
+                    if (r.at + 1 >= ui.words.size) ayahCompleted() else startListening()
+                    return
+                }
+                lastWrong[r.at] = r.heard
                 ayahMistakes++
                 val n = (attempts[r.at] ?: 0) + 1
                 attempts[r.at] = n

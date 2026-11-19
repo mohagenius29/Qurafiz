@@ -36,22 +36,25 @@ object RecitationMatcher {
         var h = 0
         val judgedUpTo = if (isFinal) heard.size else heard.size - 1 // exclusive index
 
-        while (h < heard.size && e < expected.size) {
+        outer@ while (h < heard.size && e < expected.size) {
             val hw = heard[h]
+
+            // recognizer glued two words: expected "الحمد" "لله", heard "الحمدلله"
+            if (e + 1 < expected.size && same(hw, expected[e] + expected[e + 1], strict, loose = false)) { e += 2; h++; continue }
 
             if (same(hw, expected[e], strict)) { e++; h++; continue }
 
             // recognizer split one word in two: "عليهم" -> "عليه" "م"
-            if (h + 1 < heard.size && same(hw + heard[h + 1], expected[e], strict)) { e++; h += 2; continue }
-
-            // recognizer glued two words: expected "من" "ذا" heard "منذا"
-            if (e + 1 < expected.size && same(hw, expected[e] + expected[e + 1], strict)) { e += 2; h++; continue }
+            if (h + 1 < heard.size && same(hw + heard[h + 1], expected[e], strict, loose = false)) { e++; h += 2; continue }
 
             if (h >= judgedUpTo) break // still-being-spoken last word: wait
 
             if (hw.length >= 2) {
                 for (k in 1..3) {
                     if (e + k < expected.size && same(hw, expected[e + k], strict)) {
+                        // recognizers often drop tiny words (من، في، لا): not worth stopping the user
+                        val tiny = (e until e + k).all { expected[it].length <= 2 }
+                        if (!strict && tiny) { e += k + 1; h++; continue@outer }
                         return Result.Mistake(e, MistakeType.SKIPPED_WORD, hw, h)
                     }
                 }
@@ -61,10 +64,19 @@ object RecitationMatcher {
         return Result.Progress(e, e >= expected.size)
     }
 
-    fun same(a: String, b: String, strict: Boolean): Boolean {
+    fun same(a: String, b: String, strict: Boolean, loose: Boolean = true): Boolean {
         if (a == b) return true
-        if (min(a.length, b.length) <= 2) return !strict && a.length == b.length && distance(a, b) <= 1 && a.length == 2
-        return similarity(a, b) >= if (strict) 0.8 else 0.62
+        val ka = Phonetic.key(a, strict)
+        val kb = Phonetic.key(b, strict)
+        if (ka == kb) return true
+        val lo = min(ka.length, kb.length)
+        if (lo <= 2) return false
+        if (!strict && loose) {
+            val (short, long) = if (ka.length <= kb.length) ka to kb else kb to ka
+            if (long.contains(short)) return true // recognizer cut or extended the word
+        }
+        val need = if (!loose) 0.85 else if (strict) 0.8 else 0.6 // joins/splits must match tightly
+        return similarity(ka, kb) >= need
     }
 
     fun similarity(a: String, b: String): Double {
