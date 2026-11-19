@@ -31,6 +31,7 @@ data class ReciteUi(
     val strict: Boolean = false,
     val showTranslation: Boolean = true,
     val reviewMode: Boolean = false,
+    val liveHeard: String = "",     // raw text from the recognizer, shown live
     val message: String? = null,
 )
 
@@ -44,12 +45,20 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
     private var base = 0                       // first expected word for the current utterance
     private var ayahMistakes = 0
     private val attempts = HashMap<Int, Int>() // word index -> tries in this ayah
+    private var prevHeard: List<String> = emptyList()
+    private var resumeAfterAudio = false
     private var advanceJob: Job? = null
 
     private val engine = SpeechEngine(app, ::onHeard, ::onProblem)
     private val player = AyahPlayer(
         onFinished = { if (ui.phase == Phase.PlayingAudio) afterAudio() },
-        onFailed = { ui = ui.copy(phase = Phase.Mistake.takeIf { ui.mistake != null } ?: Phase.Idle, message = "Couldn't play audio. Check your internet.") },
+        onFailed = {
+            resumeAfterAudio = false
+            ui = ui.copy(
+                phase = if (ui.mistake != null) Phase.Mistake else Phase.Idle,
+                message = "Couldn't play audio. Check your internet.",
+            )
+        },
     )
 
     // ---- starting a session -------------------------------------------------
@@ -62,7 +71,6 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startReview() {
         queue = store.due()
-        if (queue.isEmpty()) queue = emptyList()
         begin(review = true)
     }
 
@@ -77,12 +85,12 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
         engine.stop(); player.stop()
         val (s, a) = queue[i]
         val ayah = Quran.ayah(s, a)
-        base = 0; ayahMistakes = 0; attempts.clear()
+        base = 0; ayahMistakes = 0; attempts.clear(); prevHeard = emptyList(); resumeAfterAudio = false
         engine.biasWords = ayah.words.map { it.norm }
         ui = ui.copy(
             surah = s, surahName = Quran.surahs[s - 1].name, ayahNumber = a,
             position = i, queueSize = queue.size, words = ayah.words, confirmed = 0,
-            translation = ayah.translation, phase = Phase.Idle, mistake = null, message = null,
+            translation = ayah.translation, phase = Phase.Idle, mistake = null, message = null, liveHeard = "",
         )
     }
 
@@ -97,23 +105,39 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startListening() {
+        player.stop()
         base = ui.confirmed
-        ui = ui.copy(phase = Phase.Listening, mistake = null, message = null)
+        prevHeard = emptyList()
+        ui = ui.copy(phase = Phase.Listening, mistake = null, message = null, liveHeard = "")
         engine.start()
     }
 
     /** "Try again" after a mistake: keep the words already right, resume from the wrong one. */
     fun retry() = startListening()
 
+    /** Play the whole ayah. */
     fun listenToAyah() {
         engine.stop()
+        resumeAfterAudio = false
         ui = ui.copy(phase = Phase.PlayingAudio, message = null)
         player.play(ui.surah, ui.ayahNumber)
     }
 
+    /** Play just the word the user is on (or got wrong). */
+    fun hearWord() {
+        engine.stop()
+        resumeAfterAudio = false
+        ui = ui.copy(phase = Phase.PlayingAudio, message = null)
+        player.playWord(ui.surah, ui.ayahNumber, (ui.confirmed + 1).coerceAtMost(ui.words.size))
+    }
+
     private fun afterAudio() {
-        // after hearing it correctly, let the user say it again right away
-        ui = ui.copy(phase = if (ui.mistake != null) Phase.Mistake else Phase.Idle)
+        if (ui.mistake != null && resumeAfterAudio) {
+            resumeAfterAudio = false
+            startListening() // word was read to them: now they say it, hands-free
+        } else {
+            ui = ui.copy(phase = if (ui.mistake != null) Phase.Mistake else Phase.Idle)
+        }
     }
 
     fun skipAyah() { if (ui.position + 1 < queue.size) loadAyah(ui.position + 1) else finish() }
@@ -132,24 +156,40 @@ class ReciteViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun onHeard(text: String, isFinal: Boolean) {
         if (ui.phase != Phase.Listening) return
+        ui = ui.copy(liveHeard = text)
         val expected = ui.words.map { it.norm }
         val heard = ArabicNormalizer.words(text)
+
         when (val r = RecitationMatcher.evaluate(expected, heard, base, isFinal, ui.strict)) {
             is Result.Progress -> {
+                prevHeard = if (isFinal) emptyList() else heard
                 ui = ui.copy(confirmed = maxOf(ui.confirmed, r.confirmed))
                 if (r.completed) ayahCompleted() else if (isFinal) base = ui.confirmed
             }
             is Result.Mistake -> {
+                // Partial results wobble while the recognizer is still thinking, so on a partial
+                // only trust a wrong word once it appeared unchanged in two updates in a row.
+                val stable = isFinal || prevHeard.getOrNull(r.heardIndex) == heard.getOrNull(r.heardIndex)
+                prevHeard = if (isFinal) emptyList() else heard
+                if (!stable) {
+                    ui = ui.copy(confirmed = maxOf(ui.confirmed, r.at))
+                    return
+                }
                 engine.stop()
                 ayahMistakes++
                 val n = (attempts[r.at] ?: 0) + 1
                 attempts[r.at] = n
                 ui = ui.copy(
                     confirmed = maxOf(ui.confirmed, r.at),
-                    phase = Phase.Mistake,
+                    phase = Phase.PlayingAudio,
                     mistake = MistakeInfo(r.type, ui.words[r.at].display, r.heard, n),
+                    message = null,
                 )
-                if (n >= 3) listenToAyah() // third failure on the same word: play it for them
+                // the app reads the correct word aloud, then listens again;
+                // after 3 failures on the same word it reads the whole ayah
+                resumeAfterAudio = true
+                if (n >= 3) player.play(ui.surah, ui.ayahNumber)
+                else player.playWord(ui.surah, ui.ayahNumber, r.at + 1)
             }
         }
     }

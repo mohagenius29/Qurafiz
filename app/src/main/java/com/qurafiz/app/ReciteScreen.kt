@@ -84,8 +84,10 @@ fun ReciteScreen(vm: ReciteViewModel, onExit: () -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     Text(ui.translation, textAlign = TextAlign.Center, fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = .7f))
                 }
-                Spacer(Modifier.height(14.dp))
-                StatusArea(ui, onTryAgain = vm::retry, onHear = vm::listenToAyah)
+                Spacer(Modifier.height(10.dp))
+                LiveHeard(ui)
+                Spacer(Modifier.height(10.dp))
+                StatusArea(ui, onTryAgain = vm::retry, onHear = vm::hearWord)
             }
 
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
@@ -148,9 +150,8 @@ private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit)
     when (ui.phase) {
         Phase.Idle -> Hint(ui.message ?: "Tap the mic and recite. I'll follow you word by word.")
         Phase.Listening -> Hint("Listening… recite from where the gold highlight is.")
-        Phase.PlayingAudio -> Hint("Listen carefully, then recite it yourself.")
         Phase.AyahDone -> Text(ui.message ?: "", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = CorrectGreen)
-        Phase.Mistake -> ui.mistake?.let { m ->
+        Phase.Mistake, Phase.PlayingAudio -> if (ui.mistake == null) Hint("Listen carefully, then recite it yourself.") else ui.mistake.let { m ->
             Card(
                 Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = ErrorRed.copy(alpha = .12f)),
@@ -164,21 +165,40 @@ private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         when {
-                            m.attempt >= 3 -> "Here's the correct recitation."
-                            m.attempt == 2 -> "The word is shown now. Say it again."
-                            else -> "Try that word again — a hint is showing."
+                            m.attempt >= 3 -> "Listen to the whole ayah, then I'll listen to you again."
+                            else -> "Listen to the correct word, then say it. I'll start listening again automatically."
                         },
                         fontSize = 14.sp, textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(onClick = onTryAgain) { Text("Try again") }
-                        OutlinedButton(onClick = onHear) { Text("Hear it") }
+                        OutlinedButton(onClick = onHear) { Text("Hear word") }
                     }
                 }
             }
         }
         Phase.Finished -> Unit
+    }
+}
+
+@Composable
+private fun LiveHeard(ui: ReciteUi) {
+    if (ui.phase != Phase.Listening && ui.liveHeard.isEmpty()) return
+    Card(
+        Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp).fillMaxWidth()) {
+            Text("I heard", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Text(
+                    if (ui.liveHeard.isEmpty()) "…" else ui.liveHeard,
+                    fontSize = 20.sp, modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
     }
 }
 

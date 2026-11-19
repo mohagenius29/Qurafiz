@@ -16,7 +16,7 @@ object RecitationMatcher {
         data class Progress(val confirmed: Int, val completed: Boolean) : Result
 
         /** Mistake at expected word index [at]; everything before it was fine. */
-        data class Mistake(val at: Int, val type: MistakeType, val heard: String) : Result
+        data class Mistake(val at: Int, val type: MistakeType, val heard: String, val heardIndex: Int) : Result
     }
 
     /**
@@ -52,11 +52,11 @@ object RecitationMatcher {
             if (hw.length >= 2) {
                 for (k in 1..3) {
                     if (e + k < expected.size && same(hw, expected[e + k], strict)) {
-                        return Result.Mistake(e, MistakeType.SKIPPED_WORD, hw)
+                        return Result.Mistake(e, MistakeType.SKIPPED_WORD, hw, h)
                     }
                 }
             }
-            return Result.Mistake(e, MistakeType.WRONG_WORD, hw)
+            return Result.Mistake(e, MistakeType.WRONG_WORD, hw, h)
         }
         return Result.Progress(e, e >= expected.size)
     }
