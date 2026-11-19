@@ -23,11 +23,22 @@ jobs:
         with:
           gradle-version: 8.9
 
-      - name: Unit tests
-        run: gradle testDebugUnitTest --no-daemon
+      - name: Unit tests and build
+        run: |
+          set -o pipefail
+          (gradle testDebugUnitTest assembleDebug --no-daemon --console=plain 2>&1 | tee build.log)
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+      - name: Save build log to branch
+        if: failure()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan build-log
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          tail -n 400 build.log > log.txt
+          git add -f log.txt
+          git commit -m "build log run ${{ github.run_number }}"
+          git push -f origin build-log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
