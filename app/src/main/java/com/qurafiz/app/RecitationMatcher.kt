@@ -24,6 +24,7 @@ object RecitationMatcher {
      * @param isFinal false for partial results: the last heard word may still be incomplete,
      *                so it is never judged as wrong (it only counts if it already matches)
      * @param strict strict = recognizer noise barely tolerated; gentle = forgiving
+     * @param lenientStart gentle mode only: tolerate 1-2 words missing at the very start (gap between sessions)
      */
     fun evaluate(
         expected: List<String>,
@@ -31,6 +32,7 @@ object RecitationMatcher {
         start: Int,
         isFinal: Boolean,
         strict: Boolean,
+        lenientStart: Boolean = false,
     ): Result {
         var e = start
         var h = 0
@@ -54,7 +56,9 @@ object RecitationMatcher {
                     if (e + k < expected.size && same(hw, expected[e + k], strict)) {
                         // recognizers often drop tiny words (من، في، لا): not worth stopping the user
                         val tiny = (e until e + k).all { expected[it].length <= 2 }
-                        if (!strict && tiny) { e += k + 1; h++; continue@outer }
+                        // a new recognizer session can miss the first word or two while it restarts
+                        val lost = lenientStart && h == 0 && k <= 2
+                        if (!strict && (tiny || lost)) { e += k + 1; h++; continue@outer }
                         return Result.Mistake(e, MistakeType.SKIPPED_WORD, hw, h)
                     }
                 }

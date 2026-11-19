@@ -71,7 +71,7 @@ class SpeechEngine(
         rec?.startListening(i)
     }
 
-    private fun restart(delayMs: Long = 120) {
+    private fun restart(delayMs: Long = 30) {
         if (!active) return
         main.postDelayed({ if (active) listen() }, delayMs)
     }

@@ -59,4 +59,15 @@ class RecitationMatcherTest {
         val r = RecitationMatcher.evaluate(a, ArabicNormalizer.words("الذي يوسوس صدور الناس"), 0, true, false) as Result.Progress
         assertTrue(r.completed)
     }
+
+    @Test fun flowsAcrossAyahBoundaries() {
+        val stream = ArabicNormalizer.words("بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ")
+        val r = RecitationMatcher.evaluate(stream, ArabicNormalizer.words("بسم الله الرحمن الرحيم الحمد لله رب العالمين"), 0, true, false) as Result.Progress
+        assertEquals(8, r.confirmed)
+    }
+
+    @Test fun lenientStartToleratesWordsLostBetweenSessions() {
+        val r = RecitationMatcher.evaluate(ayah, ArabicNormalizer.words("رب العالمين"), 0, true, false, lenientStart = true)
+        assertTrue(r is Result.Progress)
+    }
 }

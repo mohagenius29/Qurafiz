@@ -46,6 +46,12 @@ fun ReciteScreen(vm: ReciteViewModel, onExit: () -> Unit) {
         if (granted) vm.toggleMic() else askMic.launch(Manifest.permission.RECORD_AUDIO)
     }
 
+    // start listening as soon as the screen opens: no need to tap the mic
+    LaunchedEffect(Unit) {
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (granted) vm.autoStart() else askMic.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -148,8 +154,8 @@ private fun AyahWords(ui: ReciteUi, modifier: Modifier) {
 @Composable
 private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit, onAccept: () -> Unit) {
     when (ui.phase) {
-        Phase.Idle -> Hint(ui.message ?: "Tap the mic and recite. I'll follow you word by word.")
-        Phase.Listening -> Hint("Listening… recite from where the gold highlight is.")
+        Phase.Idle -> Hint(ui.message ?: "Tap the mic to start. I'll follow you word by word.")
+        Phase.Listening -> Hint(ui.message ?: "Listening… just keep reciting, I'll keep up with you.")
         Phase.AyahDone -> Text(ui.message ?: "", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = CorrectGreen)
         Phase.Mistake, Phase.PlayingAudio -> if (ui.mistake == null) Hint("Listen carefully, then recite it yourself.") else ui.mistake.let { m ->
             Card(
@@ -166,8 +172,8 @@ private fun StatusArea(ui: ReciteUi, onTryAgain: () -> Unit, onHear: () -> Unit,
                     Spacer(Modifier.height(4.dp))
                     Text(
                         when {
-                            m.attempt >= 3 -> "Listen to the whole ayah, then I'll listen to you again."
-                            else -> "Listen to the correct word, then say it. I'll start listening again automatically."
+                            m.attempt >= 3 -> "Listen to the whole ayah, then I'll listen again. You can restart the ayah or carry on."
+                            else -> "Listen to the word, then carry on from it or restart the ayah from the beginning. I'll start listening again by myself."
                         },
                         fontSize = 14.sp, textAlign = TextAlign.Center,
                     )
