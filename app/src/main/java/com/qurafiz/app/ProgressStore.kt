@@ -1,7 +1,7 @@
 package com.qurafiz.app
 
 import android.content.Context
-import java.time.LocalDate
+import java.util.TimeZone
 
 /**
  * Remembers how well each ayah is known and when to review it (simple spaced repetition),
@@ -10,7 +10,11 @@ import java.time.LocalDate
 class ProgressStore(ctx: Context) {
     private val p = ctx.getSharedPreferences("qurafiz_progress", Context.MODE_PRIVATE)
 
-    private fun today() = LocalDate.now().toEpochDay()
+    /** Days since 1970 in the phone's local time zone. */
+    private fun today(): Long {
+        val now = System.currentTimeMillis()
+        return (now + TimeZone.getDefault().getOffset(now)) / 86_400_000L
+    }
     private fun key(s: Int, a: Int) = "a_${s}_$a"
 
     /** Review gaps in days: level 1 -> 1 day ... level 6 -> 60 days. */
